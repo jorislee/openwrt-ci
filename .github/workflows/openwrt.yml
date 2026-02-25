@@ -1,5 +1,5 @@
 #
-# This is free software, lisence use MIT.
+# This is free software, license use MIT.
 # 
 # Copyright (C) 2019 P3TERX <https://p3terx.com>
 # Copyright (C) 2020 KFERMercer <KFER.Mercer@gmail.com>
@@ -22,44 +22,35 @@ jobs:
     if: github.event.repository.owner.id == github.event.sender.id
 
     steps:
+      # ------------------------------
       - name: Checkout
         uses: actions/checkout@v2
         with:
           ref: master
 
+      # ------------------------------
       - name: Space cleanup
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          docker rmi `docker images -q`
+          # 清理 Docker 镜像和不必要的软件包
+          docker rmi $(docker images -q) || true
           sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
           sudo -E apt-get -y purge azure-cli ghc* zulu* hhvm llvm* firefox google* dotnet* powershell openjdk* adoptopenjdk* mysql* php* mongodb* dotnet* moby* snapd* || true
           sudo -E apt-get update
           sudo -E apt-get -y install build-essential asciidoc binutils bzip2 gawk gettext git libncurses5-dev libz-dev patch python3 unzip zlib1g-dev lib32gcc-s1 libc6-dev-i386 subversion flex uglifyjs gcc-multilib g++-multilib p7zip p7zip-full msmtp libssl-dev texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake libtool autopoint device-tree-compiler antlr3 gperf swig libtinfo5
           sudo -E apt-get -y autoremove --purge
           sudo -E apt-get clean
-
-          # sudo mkdir -p -m 777 /mnt/openwrt/bin /mnt/openwrt/build_dir/host /mnt/openwrt/build_dir/hostpkg /mnt/openwrt/dl /mnt/openwrt/feeds /mnt/openwrt/staging_dir
-          # ln -s /mnt/openwrt/bin ./bin
-          # mkdir -p ./build_dir
-          # ln -s -f /mnt/openwrt/build_dir/host ./build_dir/host
-          # ln -s -f /mnt/openwrt/build_dir/hostpkg ./build_dir/hostpkg
-          # ln -s /mnt/openwrt/dl ./dl
-          # ln -s /mnt/openwrt/feeds ./feeds
-          # ln -s /mnt/openwrt/staging_dir ./staging_dir
-
           df -h
-        
-      - name: Download openwrt
+
+      # ------------------------------
+      - name: Download OpenWrt
         run: |
-          git clone -b openwrt-22.03 --recursive https://github.com/openwrt/openwrt.git
+          git clone -b v24.10.5 --recursive https://github.com/openwrt/openwrt.git
           rm ./README.md
           mv ./openwrt/* ./
 
-      - name: Install Helloword
-        run: |
-          echo "src-git helloworld https://github.com/fw876/helloworld" >> ./feeds.conf.default
-    
+      # ------------------------------
       - name: Install OpenClash
         run: |
           mkdir package/luci-app-openclash
@@ -74,37 +65,48 @@ jobs:
           make && sudo make install
           popd
 
+      # ------------------------------
       - name: Update feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-      
+
+      # ------------------------------
       - name: Generate configuration file
         run: |
           rm -f ./.config*
           touch ./.config
 
-          #
-          # 在 cat >> .config <<EOF 到 EOF 之间粘贴你的编译配置, 需注意缩进关系
-          # 例如:
-
           cat >> .config <<EOF
+          #################################################################
+          # ------------------- 基础平台配置 --------------------------
+          #################################################################
           CONFIG_KERNEL_BUILD_USER="OpenWrt-CI"
           CONFIG_KERNEL_BUILD_DOMAIN="Azure"
+          CONFIG_TARGET_IMAGES_EXT4=y
+          CONFIG_TARGET_ROOTFS_EXT4FS=y
+          CONFIG_EFI_IMAGES=y
           CONFIG_TARGET_x86=y
           CONFIG_TARGET_x86_64=y
           CONFIG_TARGET_x86_64_Generic=y
           CONFIG_TARGET_IMAGES_GZIP=y
 
-          # CONFIG_BPF_TOOLCHAIN_NONE is not set
+          #################################################################
+          # ------------------- 内核与工具链 --------------------------
+          #################################################################
           CONFIG_BUILDBOT=n
-          CONFIG_COLLECT_KERNEL_DEBUG=y
           CONFIG_HAS_BPF_TOOLCHAIN=y
           CONFIG_IB=y
           CONFIG_IMAGEOPT=y
-
+          # 关闭调试信息，提高性能
+          # CONFIG_COLLECT_KERNEL_DEBUG is not set
+          # CONFIG_REPRODUCIBLE_DEBUG_INFO is not set
           # CONFIG_KERNEL_KALLSYMS is not set
           CONFIG_MAKE_TOOLCHAIN=y
+
+          #################################################################
+          # ------------------- 基础库和服务 --------------------------
+          #################################################################
           CONFIG_PACKAGE_cgi-io=y
           CONFIG_PACKAGE_libbpf=m
           CONFIG_PACKAGE_libelf=m
@@ -144,53 +146,31 @@ jobs:
           CONFIG_PACKAGE_uhttpd=y
           CONFIG_PACKAGE_uhttpd-mod-ubus=y
           CONFIG_PACKAGE_zlib=m
-          CONFIG_REPRODUCIBLE_DEBUG_INFO=y
-          CONFIG_SDK=y
-          CONFIG_SDK_LLVM_BPF=y
-          CONFIG_TARGET_ALL_PROFILES=y
-          CONFIG_USE_LLVM_BUILD=y
-          CONFIG_VERSIONOPT=y
-          CONFIG_VERSION_BUG_URL=""
-          CONFIG_VERSION_CODE=""
-          CONFIG_VERSION_DIST="OpenWrt"
-          CONFIG_VERSION_FILENAMES=y
-          CONFIG_VERSION_HOME_URL=""
-          CONFIG_VERSION_HWREV=""
-          CONFIG_VERSION_MANUFACTURER=""
-          CONFIG_VERSION_MANUFACTURER_URL=""
-          CONFIG_VERSION_NUMBER=""
-          CONFIG_VERSION_PRODUCT=""
-          CONFIG_VERSION_REPO="https://mirrors.tuna.tsinghua.edu.cn/openwrt/releases/22.03.0"
-          CONFIG_VERSION_SUPPORT_URL=""
 
-          # Set size to 512
-          CONFIG_TARGET_KERNEL_PARTSIZE=30
-          CONFIG_TARGET_ROOTFS_PARTSIZE=481
+          #################################################################
+          # ------------------- 分区设置 --------------------------
+          #################################################################
+          CONFIG_TARGET_KERNEL_PARTSIZE=64
+          CONFIG_TARGET_ROOTFS_PARTSIZE=4096
 
-          # Custom
-          CONFIG_PACKAGE_wget=n
-          CONFIG_PACKAGE_wget-ssl=y
-          CONFIG_PACKAGE_dnsmasq=n
-          CONFIG_PACKAGE_dnsmasq-full=y
-          CONFIG_PACKAGE_ip6tables-mod-nat=y
-          CONFIG_PACKAGE_openssh-sftp-server=y
-          CONFIG_PACKAGE_luci-proto-wireguard=y
-          CONFIG_PACKAGE_adguardhome=y
-          CONFIG_PACKAGE_luci-app-upnp=y
+          #################################################################
+          # ------------------- 高性能优化 --------------------------
+          #################################################################
+          CONFIG_PACKAGE_kmod-tcp-bbr=y          # BBR 拥塞控制
+          CONFIG_DEFAULT_tcp_congestion_control="bbr"
+          CONFIG_PACKAGE_luci-app-flowoffload=y  # NAT 加速
+          CONFIG_PACKAGE_kmod-nft-offload=y      # nftables offload
+          CONFIG_PACKAGE_irqbalance=y            # IRQ 自动绑核
+          CONFIG_PACKAGE_htop=y
+          CONFIG_PACKAGE_lsblk=y
+
+          #################################################################
+          # ------------------- OpenClash & Clash 依赖 --------------------------
+          #################################################################
           CONFIG_PACKAGE_luci-app-openclash=y
-          CONFIG_PACKAGE_kmod-tun=y
-          CONFIG_PACKAGE_luci-compat=y
-          CONFIG_PACKAGE_kmod-tcp-bbr=y
-          CONFIG_PACKAGE_iperf3=y
-          CONFIG_PACKAGE_mtr=y
-          CONFIG_PACKAGE_luci-app-adblock=y
-          CONFIG_PACKAGE_luci-app-adbyby-plus=y
-
-          # Clash
           CONFIG_PACKAGE_coreutils-nohup=y
           CONFIG_PACKAGE_bash=y
           CONFIG_PACKAGE_iptables=y
-          CONFIG_PACKAGE_dnsmasq-full=y
           CONFIG_PACKAGE_curl=y
           CONFIG_PACKAGE_ca-certificates=y
           CONFIG_PACKAGE_ipset=y
@@ -203,21 +183,32 @@ jobs:
           CONFIG_PACKAGE_ruby-yaml=y
           CONFIG_PACKAGE_kmod-tun=y
           CONFIG_PACKAGE_kmod-inet-diag=y
-          EOF
 
-          #
-          # ===============================================================
-          # 
+          #################################################################
+          # ------------------- 网络工具 --------------------------
+          #################################################################
+          CONFIG_PACKAGE_iperf3=y
+          CONFIG_PACKAGE_mtr=y
+          CONFIG_PACKAGE_luci-app-ttyd=y
+          CONFIG_PACKAGE_luci-proto-wireguard=y
+          CONFIG_PACKAGE_luci-app-upnp=y
+          CONFIG_PACKAGE_adguardhome=y
+          CONFIG_PACKAGE_luci-compat=y
+          CONFIG_PACKAGE_luci-app-adblock=y
+          CONFIG_PACKAGE_luci-app-adbyby-plus=y
+          EOF
 
           sed -i 's/^[ \t]*//g' ./.config
           make defconfig
-        
+
+      # ------------------------------
       - name: Make download
         run: |
           make download -j8 || make download -j1 V=s
           rm -rf $(find ./dl/ -size -1024c)
           df -h
 
+      # ------------------------------
       - name: Compile firmware
         run: |
           make -j$(nproc) || make -j1 V=s
@@ -227,8 +218,8 @@ jobs:
           df -h
           echo "======================="
           du -h ./ --max-depth=1
-          du -h /mnt/openwrt/ --max-depth=1 || true
 
+      # ------------------------------
       - name: Prepare artifact
         run: |
           mkdir -p ./artifact/firmware
@@ -239,6 +230,7 @@ jobs:
           cp -rf $(find ./bin/packages/ -type f -name "*.ipk") ./artifact/package/
           cp -rf $(find ./bin/targets/ -type f -name "*.buildinfo" -o -name "*.manifest") ./artifact/buildinfo/
 
+      # ------------------------------
       - name: Deliver buildinfo
         uses: actions/upload-artifact@v2
         with:
@@ -257,6 +249,31 @@ jobs:
           name: OpenWrt_firmware
           path: ./bin/targets/
 
+      # ------------------------------
+      - name: Inject runtime performance tweaks
+        run: |
+          mkdir -p files/etc
+          # 内核参数
+          cat >> files/etc/sysctl.conf <<EOF
+          net.core.rmem_max=67108864
+          net.core.wmem_max=67108864
+          net.core.netdev_max_backlog=4096
+          net.netfilter.nf_conntrack_max=262144
+          net.ipv4.tcp_congestion_control=bbr
+          net.core.default_qdisc=fq
+          net.ipv4.tcp_tw_reuse=1
+          EOF
+          # 开机自动 performance 模式 + irqbalance
+          cat >> files/etc/rc.local <<EOF
+          for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+            echo performance > \$cpu
+          done
+          /etc/init.d/irqbalance enable
+          /etc/init.d/irqbalance start
+          exit 0
+          EOF
+
+      # ------------------------------
       - name: Upload release asset
         if: github.event == 'release'
         uses: svenstaro/upload-release-action@v2
